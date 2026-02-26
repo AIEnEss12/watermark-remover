@@ -9,18 +9,15 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 1. Устанавливаем совместимые версии NumPy и SciPy до установки iopaint
-# NumPy < 2.0.0 критически важен для старых нейронок
-RUN pip install --no-cache-dir \
-    "numpy<2.0.0" \
-    "scipy<1.13.0" \
-    torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# 1. Сначала ставим NumPy и SciPy из стандартного репозитория (PyPI)
+RUN pip install --no-cache-dir "numpy<2.0.0" "scipy<1.13.0"
 
-# 2. Устанавливаем iopaint
-# Он подтянет остальные зависимости, но не будет трогать уже установленные numpy/scipy
+# 2. Затем ставим PyTorch (CPU-версию) из официального индекса PyTorch
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# 3. Устанавливаем iopaint
 RUN pip install --no-cache-dir iopaint
 
 ENV PORT=8080
 
-# Запуск с использованием переменной окружения Railway
 CMD ["sh", "-c", "iopaint start --model=lama --device=cpu --host=0.0.0.0 --port=${PORT}"]
