@@ -1,6 +1,6 @@
 import os
 import redis
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
 import httpx
 import logging
 from .detector import detect_watermark
@@ -50,8 +50,9 @@ if __name__ == '__main__':
     # Connect to Redis and start working
     try:
         conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-        with Connection(conn):
-            worker = Worker(Queue('watermark_tasks'))
-            worker.work()
+        # Pass connection directly to Queue and Worker
+        q = Queue('watermark_tasks', connection=conn)
+        worker = Worker(q, connection=conn)
+        worker.work()
     except Exception as e:
         logger.error(f"Worker failed to start: {e}")
