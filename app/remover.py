@@ -63,22 +63,27 @@ def remove_watermark(img: np.ndarray, bbox: tuple[int, int, int, int], logo_path
             logo = cv2.imread(logo_file, cv2.IMREAD_UNCHANGED)
             
         if logo is not None:
-            target_w = x2 - x1
-            target_h = y2 - y1
-            
+            # FIXED SIZE LOGIC
+            # Use a fixed width for the logo (e.g., 180px)
+            fixed_width = 180
             logo_h, logo_w = logo.shape[:2]
             
-            # Calculate scale to fit within bbox while maintaining aspect ratio
-            scale = min(target_w / logo_w, target_h / logo_h)
+            # Scale to fixed width while maintaining aspect ratio
+            # But don't exceed 20% of image width
+            max_w = int(w * 0.2)
+            target_w = min(fixed_width, max_w)
+            
+            scale = target_w / logo_w
             new_w = int(logo_w * scale)
             new_h = int(logo_h * scale)
             
             if new_w > 0 and new_h > 0:
                 resized_logo = cv2.resize(logo, (new_w, new_h), interpolation=cv2.INTER_AREA)
                 
-                # Center the logo within the bbox
-                off_x = x1 + (target_w - new_w) // 2
-                off_y = y1 + (target_h - new_h) // 2
+                # PLACE IN RIGHT CORNER (Bottom-Right with padding)
+                padding = 30
+                off_x = w - new_w - padding
+                off_y = h - new_h - padding
                 
                 # Overlay with alpha channel
                 if resized_logo.shape[2] == 4:
@@ -86,17 +91,20 @@ def remove_watermark(img: np.ndarray, bbox: tuple[int, int, int, int], logo_path
                     logo_rgb = resized_logo[:, :, :3]
                     
                     # Ensure indices are within bounds
-                    off_y_end = min(off_y + new_h, h)
-                    off_x_end = min(off_x + new_w, w)
-                    actual_h = off_y_end - off_y
-                    actual_w = off_x_end - off_x
+                    off_y_start = max(0, off_y)
+                    off_x_start = max(0, off_x)
+                    off_y_end = min(off_y_start + new_h, h)
+                    off_x_end = min(off_x_start + new_w, w)
+                    
+                    actual_h = off_y_end - off_y_start
+                    actual_w = off_x_end - off_x_start
                     
                     if actual_h > 0 and actual_w > 0:
-                        roi = result[off_y:off_y_end, off_x:off_x_end]
+                        roi = result[off_y_start:off_y_end, off_x_start:off_x_end]
                         alpha_crop = alpha[:actual_h, :actual_w, np.newaxis]
                         logo_rgb_crop = logo_rgb[:actual_h, :actual_w]
                         
-                        result[off_y:off_y_end, off_x:off_x_end] = (
+                        result[off_y_start:off_y_end, off_x_start:off_x_end] = (
                             (1.0 - alpha_crop) * roi + alpha_crop * logo_rgb_crop
                         ).astype(np.uint8)
                 else:
@@ -104,13 +112,16 @@ def remove_watermark(img: np.ndarray, bbox: tuple[int, int, int, int], logo_path
                     if len(resized_logo.shape) == 2:
                         resized_logo = cv2.cvtColor(resized_logo, cv2.COLOR_GRAY2BGR)
                     
-                    off_y_end = min(off_y + new_h, h)
-                    off_x_end = min(off_x + new_w, w)
-                    actual_h = off_y_end - off_y
-                    actual_w = off_x_end - off_x
+                    off_y_start = max(0, off_y)
+                    off_x_start = max(0, off_x)
+                    off_y_end = min(off_y_start + new_h, h)
+                    off_x_end = min(off_x_start + new_w, w)
+                    
+                    actual_h = off_y_end - off_y_start
+                    actual_w = off_x_end - off_x_start
                     
                     if actual_h > 0 and actual_w > 0:
-                        result[off_y:off_y_end, off_x:off_x_end] = resized_logo[:actual_h, :actual_w, :3]
+                        result[off_y_start:off_y_end, off_x_start:off_x_end] = resized_logo[:actual_h, :actual_w, :3]
     except Exception as e:
         # Log error but return the inpainted result at least
         print(f"Error processing logo {logo_file}: {e}")
