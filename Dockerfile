@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code and logos
 COPY app/ ./app/
 COPY logo.svg .
-COPY logo.png .
 
 # Use multiple workers for better CPU utilization in production
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
