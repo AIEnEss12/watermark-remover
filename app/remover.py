@@ -85,6 +85,18 @@ def remove_watermark(img: np.ndarray, bbox: tuple[int, int, int, int], logo_path
                 off_x = w - new_w - padding
                 off_y = h - new_h - padding
                 
+                # Apply background blur to the area where the logo will be placed
+                off_y_start = max(0, off_y)
+                off_x_start = max(0, off_x)
+                off_y_end = min(off_y_start + new_h, h)
+                off_x_end = min(off_x_start + new_w, w)
+                
+                if off_y_end > off_y_start and off_x_end > off_x_start:
+                    roi_bg = result[off_y_start:off_y_end, off_x_start:off_x_end]
+                    # Use a sensible kernel size for blur
+                    ksize = 31 if target_w < 150 else 51
+                    result[off_y_start:off_y_end, off_x_start:off_x_end] = cv2.GaussianBlur(roi_bg, (ksize, ksize), 0)
+                
                 # Overlay with alpha channel
                 if resized_logo.shape[2] == 4:
                     alpha = resized_logo[:, :, 3] / 255.0
