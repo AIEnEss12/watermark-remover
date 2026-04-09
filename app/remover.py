@@ -64,14 +64,10 @@ def remove_watermark(img: np.ndarray, bbox: tuple[int, int, int, int], logo_path
             
         if logo is not None:
             # FIXED SIZE LOGIC
-            # Use a fixed width for the logo (e.g., 180px)
-            fixed_width = 180
+            # PROPORTIONAL SIZE LOGIC
             logo_h, logo_w = logo.shape[:2]
-            
-            # Scale to fixed width while maintaining aspect ratio
-            # But don't exceed 20% of image width
-            max_w = int(w * 0.2)
-            target_w = min(fixed_width, max_w)
+            # Use 18% of image width for the logo to ensure relative scaling
+            target_w = int(w * 0.18)
             
             scale = target_w / logo_w
             new_w = int(logo_w * scale)
@@ -81,7 +77,7 @@ def remove_watermark(img: np.ndarray, bbox: tuple[int, int, int, int], logo_path
                 resized_logo = cv2.resize(logo, (new_w, new_h), interpolation=cv2.INTER_AREA)
                 
                 # PLACE IN RIGHT CORNER (Bottom-Right with padding)
-                padding = 30
+                padding = 15
                 off_x = w - new_w - padding
                 off_y = h - new_h - padding
                 

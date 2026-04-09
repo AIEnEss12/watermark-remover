@@ -13,7 +13,7 @@ from app.detector import detect_watermark
 from app.remover import remove_watermark
 
 def main():
-    url = "https://img.nomadocars.com/unsafe/rs:fit:1200:0/plain/s3://sorted-tote-m1bwf4wyssq-2/carpicture05/pic4105/41051150_015.avif"
+    url = "https://ci.encar.com/carpicture08/pic4008/40083772_024.jpg?impolicy=heightRate&rh=1080&cw=1920&ch=1080&cg=Center&wtmk=https://ci.encar.com/wt_mark/w_mark_04.png&t=20260223153827"
     logo_svg = "logo.svg"
     
     output_dir = Path("output")
