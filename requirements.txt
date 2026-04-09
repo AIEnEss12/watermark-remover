@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+opencv-python-headless
+Pillow
+httpx
+numpy
+python-multipart
+resvg-python
+rq
+redis

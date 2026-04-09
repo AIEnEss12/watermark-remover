@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+output/
+*.jpg
+*.png
+!logo.png
+!logo.svg
+.env
+.idea/
+.vscode/
