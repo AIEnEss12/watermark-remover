@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel
 import httpx
 import logging
@@ -25,6 +25,36 @@ app = FastAPI(title="ENCAR Watermark Remover Gateway")
 
 class ImageRequest(BaseModel):
     image_url: str
+
+@app.get("/")
+def index():
+    """Return a simple HTML form for testing."""
+    return HTMLResponse(content="""
+    <html>
+        <head>
+            <title>ENCAR Watermark Remover</title>
+            <style>
+                body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f0f0; }
+                .container { background-color: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                h1 { margin-top: 0; }
+                form { display: flex; flex-direction: column; gap: 1rem; }
+                input[type="file"] { border: 1px solid #ccc; padding: 0.5rem; border-radius: 4px; }
+                button { background-color: #007bff; color: white; border: none; padding: 0.75rem; border-radius: 4px; cursor: pointer; }
+                button:hover { background-color: #0056b3; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>ENCAR Watermark Remover</h1>
+                <p>Upload a car image to remove the ENCAR watermark.</p>
+                <form action="/remove/upload" method="post" enctype="multipart/form-data">
+                    <input type="file" name="file" accept="image/*" required>
+                    <button type="submit">Remove Watermark</button>
+                </form>
+            </div>
+        </body>
+    </html>
+    """)
 
 @app.get("/health")
 def health_check():
