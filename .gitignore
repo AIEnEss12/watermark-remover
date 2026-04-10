@@ -1,11 +1,22 @@
-venv/
+# Binaries
+watermark-remover
+check-build
+tester
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# Output
+output/
+test_result.*
+
+# Python (Legacy Cleanup)
 __pycache__/
 *.pyc
-.ipynb_checkpoints/
-output/
-*.jpg
-*.png
-!logo.svg
+venv/
 .env
-.idea/
-.vscode/
+
+# System
+.DS_Store

@@ -1,32 +1,12 @@
 version: "3.9"
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: watermark-redis
-    ports:
-      - "6379:6379"
-    restart: always
-
   api:
     build: .
     container_name: watermark-api
     ports:
       - "8000:8000"
-    environment:
-      - REDIS_HOST=redis
-    depends_on:
-      - redis
     restart: always
-
-  worker:
-    build: .
-    # Note: Use -m to run as module so imports work correctly
-    command: python3 -m app.worker
     environment:
-      - REDIS_HOST=redis
-    depends_on:
-      - redis
-    deploy:
-      replicas: 3 # SCALABLE count of OpenCV clusters
-    restart: always
+      - GIN_MODE=release
+      - PORT=8000
