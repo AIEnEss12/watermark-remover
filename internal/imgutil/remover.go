@@ -1,9 +1,14 @@
 package imgutil
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
+	_ "image/png" // Register PNG decoder
+	"os"
 
+	"github.com/disintegration/imaging"
 	"gocv.io/x/gocv"
 )
 
@@ -36,24 +41,23 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 	if logoPath == "" {
 		logoPath = "logo.png"
 	}
-
-	logoBGRA := gocv.IMRead(logoPath, gocv.IMReadUnchanged)
-	if logoBGRA.Empty() {
+	if _, err := os.Stat(logoPath); os.IsNotExist(err) {
 		return result, nil
 	}
-	defer logoBGRA.Close()
+
+	logoImg, err := imaging.Open(logoPath)
+	if err != nil {
+		fmt.Printf("Error opening logo %s: %v\n", logoPath, err)
+		return result, nil
+	}
 
 	targetW := int(float64(cols) * 0.18)
-	logoCols := logoBGRA.Cols()
-	logoRows := logoBGRA.Rows()
-	scale := float64(targetW) / float64(logoCols)
-	targetH := int(float64(logoRows) * scale)
+	logoBounds := logoImg.Bounds()
+	scale := float64(targetW) / float64(logoBounds.Dx())
+	targetH := int(float64(logoBounds.Dy()) * scale)
 
 	if targetW > 0 && targetH > 0 {
-		resizedLogo := gocv.NewMat()
-		defer resizedLogo.Close()
-		gocv.Resize(logoBGRA, &resizedLogo, image.Pt(targetW, targetH), 0, 0, gocv.InterpolationLanczos4)
-
+		resizedLogo := imaging.Resize(logoImg, targetW, targetH, imaging.Lanczos)
 		padding := 5
 		offX := cols - targetW - padding
 		offY := rows - targetH - padding
@@ -71,28 +75,32 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 				gocv.GaussianBlur(roi, &roi, image.Pt(7, 7), 0, 0, gocv.BorderDefault)
 			}
 
-			// Overlay logo with Alpha channel support
-			roi := result.Region(image.Rect(startX, startY, endX, endY))
-			defer roi.Close()
+			// Overlay logo using Go native libraries for high quality blending
+			// Convert BGR to RGB first to avoid color swap in ToImage()
+			resultRGB := gocv.NewMat()
+			defer resultRGB.Close()
+			gocv.CvtColor(result, &resultRGB, gocv.ColorBGRToRGB)
 
-			if resizedLogo.Channels() == 4 {
-				// Split channels to get Alpha mask
-				channels := gocv.Split(resizedLogo)
-				defer func() {
-					for i := range channels {
-						channels[i].Close()
-					}
-				}()
-
-				bgrLogo := gocv.NewMat()
-				defer bgrLogo.Close()
-				gocv.Merge(channels[0:3], &bgrLogo)
-
-				// Use channel 3 (Alpha) as mask
-				bgrLogo.CopyToWithMask(&roi, channels[3])
-			} else {
-				resizedLogo.CopyTo(&roi)
+			resultImg, err := resultRGB.ToImage()
+			if err != nil {
+				return result, err
 			}
+
+			dst := image.NewRGBA(resultImg.Bounds())
+			draw.Draw(dst, dst.Bounds(), resultImg, image.Point{}, draw.Src)
+			draw.Draw(dst, image.Rect(startX, startY, endX, endY), resizedLogo, image.Point{}, draw.Over)
+
+			// Convert back to Mat
+			finalRGBA, err := gocv.ImageToMatRGBA(dst)
+			if err != nil {
+				return result, err
+			}
+			defer finalRGBA.Close()
+
+			finalBGR := gocv.NewMat()
+			gocv.CvtColor(finalRGBA, &finalBGR, gocv.ColorRGBAToBGR)
+			result.Close()
+			return finalBGR, nil
 		}
 	}
 
