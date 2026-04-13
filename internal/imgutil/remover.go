@@ -1,14 +1,9 @@
 package imgutil
 
 import (
-	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
-	_ "image/png" // Register PNG decoder
-	"os"
 
-	"github.com/disintegration/imaging"
 	"gocv.io/x/gocv"
 )
 
@@ -17,57 +12,49 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 	cols := img.Cols()
 	rows := img.Rows()
 
-	// 1. Create mask for inpainting
-	mask := gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV8U)
-	defer mask.Close()
-	mask.SetTo(gocv.Scalar{Val1: 0, Val2: 0, Val3: 0, Val4: 0})
-
-	// Use the first bbox for logo placement later
-	var primaryBbox image.Rectangle
-	if len(bboxes) > 0 {
-		primaryBbox = bboxes[0]
-	}
-
-	for _, bbox := range bboxes {
-		// Draw rectangle on mask
-		gocv.Rectangle(&mask, bbox, color.RGBA{R: 255, G: 255, B: 255, A: 255}, -1)
-	}
-
-	// Dilate mask to capture text edges: kernel 7x7, iter = 1
-	kernel := gocv.GetStructuringElement(gocv.MorphRect, image.Pt(7, 7))
-	defer kernel.Close()
-	gocv.Dilate(mask, &mask, kernel)
-
-	// 2. Apply inpaint
+	// 1. Create result image base
 	result := gocv.NewMat()
-	gocv.Inpaint(img, mask, &result, 30, gocv.Telea) // increased radius to 30 for better removal
+	if len(bboxes) > 0 {
+		mask := gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV8U)
+		defer mask.Close()
+		mask.SetTo(gocv.Scalar{Val1: 0, Val2: 0, Val3: 0, Val4: 0})
 
-	// 3. Handle Logo Overlay (only for the primary watermark)
-	if len(bboxes) == 0 {
-		return result, nil
+		for _, bbox := range bboxes {
+			gocv.Rectangle(&mask, bbox, color.RGBA{R: 255, G: 255, B: 255, A: 255}, -1)
+		}
+
+		kernel := gocv.GetStructuringElement(gocv.MorphRect, image.Pt(7, 7))
+		defer kernel.Close()
+		gocv.Dilate(mask, &mask, kernel)
+
+		gocv.Inpaint(img, mask, &result, 30, gocv.Telea)
+	} else {
+		img.CopyTo(&result)
 	}
 
+	// 2. Handle Logo Overlay
 	if logoPath == "" {
 		logoPath = "logo.png"
 	}
-	if _, err := os.Stat(logoPath); os.IsNotExist(err) {
-		return result, nil
-	}
 
-	logoImg, err := imaging.Open(logoPath)
-	if err != nil {
-		fmt.Printf("Error opening logo %s: %v\n", logoPath, err)
+	logoBGRA := gocv.IMRead(logoPath, gocv.IMReadUnchanged)
+	if logoBGRA.Empty() {
 		return result, nil
 	}
+	defer logoBGRA.Close()
 
 	targetW := int(float64(cols) * 0.18)
-	logoBounds := logoImg.Bounds()
-	scale := float64(targetW) / float64(logoBounds.Dx())
-	targetH := int(float64(logoBounds.Dy()) * scale)
+	logoCols := logoBGRA.Cols()
+	logoRows := logoBGRA.Rows()
+	scale := float64(targetW) / float64(logoCols)
+	targetH := int(float64(logoRows) * scale)
 
 	if targetW > 0 && targetH > 0 {
-		resizedLogo := imaging.Resize(logoImg, targetW, targetH, imaging.Lanczos)
-		padding := 5 // Reduced from 15
+		resizedLogo := gocv.NewMat()
+		defer resizedLogo.Close()
+		gocv.Resize(logoBGRA, &resizedLogo, image.Pt(targetW, targetH), 0, 0, gocv.InterpolationLanczos4)
+
+		padding := 5
 		offX := cols - targetW - padding
 		offY := rows - targetH - padding
 
@@ -77,44 +64,37 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 		endY := min(rows, startY+targetH)
 
 		if endX > startX && endY > startY {
-			// 4. Blur placement area — tight halo around logo only
-			blurX1 := max(0, startX-2)
-			blurY1 := max(0, startY) // small 2px halo, NOT +20 offset
-			blurX2 := min(cols, endX+2)
-			blurY2 := min(rows, endY+2)
+			// Apply blur halo ONLY if there was an original watermark
+			if len(bboxes) > 0 {
+				roi := result.Region(image.Rect(max(0, startX-2), max(0, startY), min(cols, endX+2), min(rows, endY+2)))
+				defer roi.Close()
+				gocv.GaussianBlur(roi, &roi, image.Pt(7, 7), 0, 0, gocv.BorderDefault)
+			}
 
-			roi := result.Region(image.Rect(blurX1, blurY1, blurX2, blurY2))
+			// Overlay logo with Alpha channel support
+			roi := result.Region(image.Rect(startX, startY, endX, endY))
 			defer roi.Close()
-			ksize := 7 // Reduced from 15 — small enough to not bleed outside halo
-			gocv.GaussianBlur(roi, &roi, image.Pt(ksize, ksize), 0, 0, gocv.BorderDefault)
-			// 5. Overlay logo
-			// CRITICAL: Convert BGR to RGB before ToImage() to avoid color swap
-			resultRGB := gocv.NewMat()
-			defer resultRGB.Close()
-			gocv.CvtColor(result, &resultRGB, gocv.ColorBGRToRGB)
 
-			resultImg, err := resultRGB.ToImage()
-			if err != nil {
-				return result, err
+			if resizedLogo.Channels() == 4 {
+				// Split channels to get Alpha mask
+				channels := gocv.Split(resizedLogo)
+				defer func() {
+					for i := range channels {
+						channels[i].Close()
+					}
+				}()
+
+				bgrLogo := gocv.NewMat()
+				defer bgrLogo.Close()
+				gocv.Merge(channels[0:3], &bgrLogo)
+
+				// Use channel 3 (Alpha) as mask
+				bgrLogo.CopyToWithMask(&roi, channels[3])
+			} else {
+				resizedLogo.CopyTo(&roi)
 			}
-
-			dst := image.NewRGBA(resultImg.Bounds())
-			draw.Draw(dst, dst.Bounds(), resultImg, image.Point{}, draw.Src)
-			draw.Draw(dst, image.Rect(startX, startY, endX, endY), resizedLogo, image.Point{}, draw.Over)
-
-			finalRGBA, err := gocv.ImageToMatRGBA(dst)
-			if err != nil {
-				return result, err
-			}
-			defer finalRGBA.Close()
-
-			finalBGR := gocv.NewMat()
-			gocv.CvtColor(finalRGBA, &finalBGR, gocv.ColorRGBAToBGR)
-			result.Close()
-			return finalBGR, nil
 		}
 	}
 
-	_ = primaryBbox // unused for now, could be used for specific placement
 	return result, nil
 }

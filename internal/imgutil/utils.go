@@ -44,7 +44,7 @@ func DecodeImage(data []byte) (gocv.Mat, error) {
 
 // EncodeToWebP encodes a gocv.Mat to WebP bytes.
 func EncodeToWebP(img gocv.Mat, quality float32) ([]byte, error) {
-	// Convert gocv.Mat to image.Image (BGR to RGB first to avoid color swap)
+	// Convert BGR to RGB for Go encoder
 	imgRGB := gocv.NewMat()
 	defer imgRGB.Close()
 	gocv.CvtColor(img, &imgRGB, gocv.ColorBGRToRGB)
@@ -63,9 +63,8 @@ func EncodeToWebP(img gocv.Mat, quality float32) ([]byte, error) {
 }
 
 // EncodeToJPEG encodes a gocv.Mat to JPEG bytes.
-// EncodeToJPEG encodes a gocv.Mat to JPEG bytes.
 func EncodeToJPEG(img gocv.Mat, quality int) ([]byte, error) {
-	// Convert gocv.Mat to image.Image (BGR to RGB first to avoid color swap)
+	// Convert BGR to RGB for Go encoder
 	imgRGB := gocv.NewMat()
 	defer imgRGB.Close()
 	gocv.CvtColor(img, &imgRGB, gocv.ColorBGRToRGB)

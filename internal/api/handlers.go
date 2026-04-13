@@ -71,7 +71,16 @@ func RemoveWatermarkUpload(c *gin.Context) {
 	processAndRespond(c, data)
 }
 
+var (
+	// Limit concurrent image processing tasks to prevent CPU/RAM exhaustion
+	procSemaphore = make(chan struct{}, 4)
+)
+
 func processAndRespond(c *gin.Context, data []byte) {
+	// Acquire semaphore
+	procSemaphore <- struct{}{}
+	defer func() { <-procSemaphore }()
+
 	// Decode
 	img, err := imgutil.DecodeImage(data)
 	if err != nil {
