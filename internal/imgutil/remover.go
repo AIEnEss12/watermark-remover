@@ -33,14 +33,14 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 		gocv.Rectangle(&mask, bbox, color.RGBA{R: 255, G: 255, B: 255, A: 255}, -1)
 	}
 
-	// Dilate mask to capture text edges: kernel 3x3, iter = 1
-	kernel := gocv.GetStructuringElement(gocv.MorphRect, image.Pt(3, 3))
+	// Dilate mask to capture text edges: kernel 7x7, iter = 1
+	kernel := gocv.GetStructuringElement(gocv.MorphRect, image.Pt(7, 7))
 	defer kernel.Close()
 	gocv.Dilate(mask, &mask, kernel)
 
 	// 2. Apply inpaint
 	result := gocv.NewMat()
-	gocv.Inpaint(img, mask, &result, 3, 1) // reduced radius to 3
+	gocv.Inpaint(img, mask, &result, 30, gocv.Telea) // increased radius to 30 for better removal
 
 	// 3. Handle Logo Overlay (only for the primary watermark)
 	if len(bboxes) == 0 {
@@ -67,7 +67,7 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 
 	if targetW > 0 && targetH > 0 {
 		resizedLogo := imaging.Resize(logoImg, targetW, targetH, imaging.Lanczos)
-		padding := 15
+		padding := 5 // Reduced from 15
 		offX := cols - targetW - padding
 		offY := rows - targetH - padding
 
@@ -77,13 +77,16 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 		endY := min(rows, startY+targetH)
 
 		if endX > startX && endY > startY {
-			// 4. Blur placement area
-			roi := result.Region(image.Rect(startX, startY, endX, endY))
-			defer roi.Close()
-			ksize := 15
-			if targetW >= 150 { ksize = 25 }
-			gocv.GaussianBlur(roi, &roi, image.Pt(ksize, ksize), 0, 0, gocv.BorderDefault)
+			// 4. Blur placement area — tight halo around logo only
+			blurX1 := max(0, startX-2)
+			blurY1 := max(0, startY) // small 2px halo, NOT +20 offset
+			blurX2 := min(cols, endX+2)
+			blurY2 := min(rows, endY+2)
 
+			roi := result.Region(image.Rect(blurX1, blurY1, blurX2, blurY2))
+			defer roi.Close()
+			ksize := 7 // Reduced from 15 — small enough to not bleed outside halo
+			gocv.GaussianBlur(roi, &roi, image.Pt(ksize, ksize), 0, 0, gocv.BorderDefault)
 			// 5. Overlay logo
 			// CRITICAL: Convert BGR to RGB before ToImage() to avoid color swap
 			resultRGB := gocv.NewMat()
@@ -104,7 +107,7 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 				return result, err
 			}
 			defer finalRGBA.Close()
-			
+
 			finalBGR := gocv.NewMat()
 			gocv.CvtColor(finalRGBA, &finalBGR, gocv.ColorRGBAToBGR)
 			result.Close()

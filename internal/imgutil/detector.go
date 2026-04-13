@@ -13,8 +13,8 @@ func DetectWatermark(img gocv.Mat) []image.Rectangle {
 
 	// Define zones to check (Strictly Bottom-Right Corner only)
 	zones := []image.Rectangle{
-		// 1. Digital Watermark (Bottom-Right)
-		image.Rect(int(float64(cols)*0.75), int(float64(rows)*0.85), cols, rows),
+		// 1. Digital Watermark (Bottom-Right, clamped to bottom 8% to match logo height)
+		image.Rect(int(float64(cols)*0.75), int(float64(rows)*0.92), cols, rows),
 	}
 
 	var results []image.Rectangle
