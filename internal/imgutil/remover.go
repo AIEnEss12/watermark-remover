@@ -6,9 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	_ "image/png" // Register PNG decoder
-	"os"
 
-	"github.com/disintegration/imaging"
 	"gocv.io/x/gocv"
 )
 
@@ -41,67 +39,92 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 	if logoPath == "" {
 		logoPath = "logo.png"
 	}
-	if _, err := os.Stat(logoPath); os.IsNotExist(err) {
-		return result, nil
-	}
-
-	logoImg, err := imaging.Open(logoPath)
-	if err != nil {
-		fmt.Printf("Error opening logo %s: %v\n", logoPath, err)
-		return result, nil
-	}
 
 	targetW := int(float64(cols) * 0.18)
-	logoBounds := logoImg.Bounds()
-	scale := float64(targetW) / float64(logoBounds.Dx())
-	targetH := int(float64(logoBounds.Dy()) * scale)
 
-	if targetW > 0 && targetH > 0 {
-		resizedLogo := imaging.Resize(logoImg, targetW, targetH, imaging.Lanczos)
-		padding := 5
-		offX := cols - targetW - padding
-		offY := rows - targetH - padding
+	// Use cached logo image (avoids disk I/O + Lanczos resize per request)
+	resizedLogo, logoW, logoH, err := GetScaledLogoImage(logoPath, targetW)
+	if err != nil {
+		fmt.Printf("Error getting logo: %v\n", err)
+		return result, nil
+	}
+	if resizedLogo == nil || logoW == 0 || logoH == 0 {
+		return result, nil
+	}
 
-		startX := max(0, offX)
-		startY := max(0, offY)
-		endX := min(cols, startX+targetW)
-		endY := min(rows, startY+targetH)
+	padding := 10
+	offX := cols - logoW - padding
+	offY := rows - logoH - padding
 
-		if endX > startX && endY > startY {
-			// Apply blur halo ONLY if there was an original watermark
-			if len(bboxes) > 0 {
-				roi := result.Region(image.Rect(max(0, startX-2), max(0, startY), min(cols, endX+2), min(rows, endY+2)))
-				defer roi.Close()
-				gocv.GaussianBlur(roi, &roi, image.Pt(7, 7), 0, 0, gocv.BorderDefault)
+	startX := offX
+	if startX < 0 {
+		startX = 0
+	}
+	startY := offY
+	if startY < 0 {
+		startY = 0
+	}
+	endX := startX + logoW
+	if endX > cols {
+		endX = cols
+	}
+	endY := startY + logoH
+	if endY > rows {
+		endY = rows
+	}
+
+	if endX > startX && endY > startY {
+		// Apply a subtle blur behind the logo area only if there was a watermark
+		if len(bboxes) > 0 {
+			blurX1 := startX - 3
+			if blurX1 < 0 {
+				blurX1 = 0
 			}
-
-			// Overlay logo using Go native libraries for high quality blending
-			// Convert BGR to RGB first to avoid color swap in ToImage()
-			resultRGB := gocv.NewMat()
-			defer resultRGB.Close()
-			gocv.CvtColor(result, &resultRGB, gocv.ColorBGRToRGB)
-
-			resultImg, err := resultRGB.ToImage()
-			if err != nil {
-				return result, err
+			blurX2 := endX + 3
+			if blurX2 > cols {
+				blurX2 = cols
 			}
-
-			dst := image.NewRGBA(resultImg.Bounds())
-			draw.Draw(dst, dst.Bounds(), resultImg, image.Point{}, draw.Src)
-			draw.Draw(dst, image.Rect(startX, startY, endX, endY), resizedLogo, image.Point{}, draw.Over)
-
-			// Convert back to Mat
-			finalRGBA, err := gocv.ImageToMatRGBA(dst)
-			if err != nil {
-				return result, err
+			blurY1 := startY - 3
+			if blurY1 < 0 {
+				blurY1 = 0
 			}
-			defer finalRGBA.Close()
-
-			finalBGR := gocv.NewMat()
-			gocv.CvtColor(finalRGBA, &finalBGR, gocv.ColorRGBAToBGR)
-			result.Close()
-			return finalBGR, nil
+			blurY2 := endY + 3
+			if blurY2 > rows {
+				blurY2 = rows
+			}
+			roi := result.Region(image.Rect(blurX1, blurY1, blurX2, blurY2))
+			defer roi.Close()
+			gocv.GaussianBlur(roi, &roi, image.Pt(5, 5), 0, 0, gocv.BorderDefault)
 		}
+
+		// Overlay logo using Go standard library for correct alpha blending.
+		// Convert BGR → RGB so that GoCV's ToImage() assigns channels correctly:
+		// GoCV reads channel 0 as R, but OpenCV stores channel 0 as B.
+		resultRGB := gocv.NewMat()
+		defer resultRGB.Close()
+		gocv.CvtColor(result, &resultRGB, gocv.ColorBGRToRGB)
+
+		resultImg, err := resultRGB.ToImage()
+		if err != nil {
+			return result, err
+		}
+
+		dst := image.NewRGBA(resultImg.Bounds())
+		draw.Draw(dst, dst.Bounds(), resultImg, image.Point{}, draw.Src)
+		draw.Draw(dst, image.Rect(startX, startY, endX, endY), resizedLogo, image.Point{}, draw.Over)
+
+		// Convert result back to BGR for the pipeline.
+		// ImageToMatRGBA gives RGBA (channel 0=R), CvtColor RGBA→BGR reverses to BGR.
+		finalRGBA, err := gocv.ImageToMatRGBA(dst)
+		if err != nil {
+			return result, err
+		}
+		defer finalRGBA.Close()
+
+		finalBGR := gocv.NewMat()
+		gocv.CvtColor(finalRGBA, &finalBGR, gocv.ColorRGBAToBGR)
+		result.Close()
+		return finalBGR, nil
 	}
 
 	return result, nil

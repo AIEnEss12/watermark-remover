@@ -20,6 +20,8 @@ func main() {
 	r.GET("/health", api.HealthCheck)
 	r.POST("/remove", api.RemoveWatermarkURL)
 	r.POST("/remove/upload", api.RemoveWatermarkUpload)
+	r.POST("/swap-rb", api.SwapColorsURL)
+	r.POST("/swap-rb/upload", api.SwapColorsUpload)
 
 	// Start server
 	port := os.Getenv("PORT")
