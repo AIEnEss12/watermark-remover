@@ -32,6 +32,7 @@ RUN go mod tidy
 
 # Build the application
 RUN go build -o server cmd/server/main.go
+RUN go build -o tester cmd/tester/main.go
 
 # Runtime stage
 FROM debian:trixie-slim
@@ -59,6 +60,7 @@ WORKDIR /app
 
 # Copy the binaries and assets
 COPY --from=builder /app/server .
+COPY --from=builder /app/tester .
 COPY logo.png .
 
 # Environment variables
