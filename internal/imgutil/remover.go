@@ -42,7 +42,7 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 
 	targetW := int(float64(cols) * 0.18)
 
-	// Use cached logo image (avoids disk I/O + Lanczos resize per request)
+	// Use cached high-quality logo image
 	resizedLogo, logoW, logoH, err := GetScaledLogoImage(logoPath, targetW)
 	if err != nil {
 		fmt.Printf("Error getting logo: %v\n", err)
@@ -74,7 +74,7 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 	}
 
 	if endX > startX && endY > startY {
-		// Apply a subtle blur behind the logo area only if there was a watermark
+		// Apply subtle blur behind the logo if watermark was detected
 		if len(bboxes) > 0 {
 			blurX1 := startX - 3
 			if blurX1 < 0 {
@@ -97,9 +97,8 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 			gocv.GaussianBlur(roi, &roi, image.Pt(5, 5), 0, 0, gocv.BorderDefault)
 		}
 
-		// Overlay logo using Go standard library for correct alpha blending.
-		// Convert BGR → RGB so that GoCV's ToImage() assigns channels correctly:
-		// GoCV reads channel 0 as R, but OpenCV stores channel 0 as B.
+		// High-quality logo overlay using Go's draw package.
+		// We convert the Mat to RGB first because Go's ToImage() reads channel 0 as R.
 		resultRGB := gocv.NewMat()
 		defer resultRGB.Close()
 		gocv.CvtColor(result, &resultRGB, gocv.ColorBGRToRGB)
@@ -113,8 +112,7 @@ func RemoveWatermark(img gocv.Mat, bboxes []image.Rectangle, logoPath string) (g
 		draw.Draw(dst, dst.Bounds(), resultImg, image.Point{}, draw.Src)
 		draw.Draw(dst, image.Rect(startX, startY, endX, endY), resizedLogo, image.Point{}, draw.Over)
 
-		// Convert result back to BGR for the pipeline.
-		// ImageToMatRGBA gives RGBA (channel 0=R), CvtColor RGBA→BGR reverses to BGR.
+		// Convert back to BGR Mat for standard pipeline storage.
 		finalRGBA, err := gocv.ImageToMatRGBA(dst)
 		if err != nil {
 			return result, err

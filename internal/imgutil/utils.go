@@ -13,25 +13,19 @@ import (
 	"gocv.io/x/gocv"
 )
 
-// DecodeImage decodes an image from bytes into a gocv.Mat in BGR format.
-//
-// Note: Source JPEG files from ENCAR S3 may have R and B channels swapped
-// at the source. We do NOT attempt to correct this here — the images are
-// passed through as-is, and OpenCV's encode functions handle BGR→output correctly.
+// DecodeImage decodes an image from bytes into a standard gocv.Mat (BGR).
 func DecodeImage(data []byte) (gocv.Mat, error) {
-	// 1. Try OpenCV first (fastest, handles JPEG/PNG/BMP/etc.)
+	// 1. Try OpenCV first (decodes directly to BGR)
 	img, err := gocv.IMDecode(data, gocv.IMReadColor)
 	if err == nil && !img.Empty() {
 		return img, nil
 	}
 
-	// 2. Fallback: Go stdlib image.Decode (handles WebP/AVIF via registered decoders).
-	//    image.Decode returns RGB-ordered pixels. We convert RGBA→BGR so the Mat
-	//    is in standard OpenCV BGR order for consistent processing and encoding.
+	// 2. Fallback: Go stdlib image.Decode
 	reader := bytes.NewReader(data)
 	src, _, err := image.Decode(reader)
 	if err != nil {
-		return gocv.Mat{}, fmt.Errorf("decoding failed: %v (data length: %d)", err, len(data))
+		return gocv.Mat{}, fmt.Errorf("decoding failed: %v", err)
 	}
 
 	matRGBA, err := gocv.ImageToMatRGBA(src)
@@ -53,10 +47,15 @@ func HasProcessingTag(data []byte) bool {
 	return bytes.HasSuffix(data, []byte(ProcessingTag))
 }
 
-// EncodeToWebP encodes a BGR gocv.Mat to WebP bytes using the native OpenCV encoder.
-// OpenCV's IMEncodeWithParams correctly interprets the BGR input for encoding.
+// EncodeToWebP encodes a gocv.Mat to WebP bytes.
+// It applies a BGR→RGB swap to correct for the R/B channel order issue
+// found in ENCAR/NomadO source images.
 func EncodeToWebP(img gocv.Mat, quality float32) ([]byte, error) {
-	buf, err := gocv.IMEncodeWithParams(".webp", img, []int{gocv.IMWriteWebpQuality, int(quality)})
+	imgRGB := gocv.NewMat()
+	defer imgRGB.Close()
+	gocv.CvtColor(img, &imgRGB, gocv.ColorBGRToRGB)
+
+	buf, err := gocv.IMEncodeWithParams(".webp", imgRGB, []int{gocv.IMWriteWebpQuality, int(quality)})
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +66,15 @@ func EncodeToWebP(img gocv.Mat, quality float32) ([]byte, error) {
 	return res, nil
 }
 
-// EncodeToJPEG encodes a BGR gocv.Mat to JPEG bytes using the native OpenCV encoder.
-// OpenCV's IMEncodeWithParams correctly interprets the BGR input for encoding.
+// EncodeToJPEG encodes a gocv.Mat to JPEG bytes.
+// It applies a BGR→RGB swap to correct for the R/B channel order issue
+// found in ENCAR/NomadO source images.
 func EncodeToJPEG(img gocv.Mat, quality int) ([]byte, error) {
-	buf, err := gocv.IMEncodeWithParams(".jpg", img, []int{gocv.IMWriteJpegQuality, quality})
+	imgRGB := gocv.NewMat()
+	defer imgRGB.Close()
+	gocv.CvtColor(img, &imgRGB, gocv.ColorBGRToRGB)
+
+	buf, err := gocv.IMEncodeWithParams(".jpg", imgRGB, []int{gocv.IMWriteJpegQuality, quality})
 	if err != nil {
 		return nil, err
 	}
