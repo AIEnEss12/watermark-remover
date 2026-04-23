@@ -62,13 +62,24 @@ fn err(status: StatusCode, msg: impl Into<String>) -> Response {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async fn download(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, Response> {
+    tracing::info!("Downloading from URL: {}", url);
     let resp = client.get(url).send().await.map_err(|e| {
+        error!("Fetch error for {}: {}", url, e);
         err(StatusCode::UNPROCESSABLE_ENTITY, format!("fetch error: {e}"))
     })?;
-    if !resp.status().is_success() {
+    
+    let status = resp.status();
+    let content_type = resp.headers().get(header::CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("unknown");
+    let content_len = resp.content_length().unwrap_or(0);
+    
+    tracing::info!("Source response: status={}, type={}, len={}", status, content_type, content_len);
+
+    if !status.is_success() {
         return Err(err(
             StatusCode::UNPROCESSABLE_ENTITY,
-            format!("source returned {}", resp.status()),
+            format!("source returned {}", status),
         ));
     }
     resp.bytes().await

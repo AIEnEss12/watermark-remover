@@ -7,6 +7,10 @@ use opencv::{core::Vector, imgcodecs, imgproc, prelude::*};
 /// which visually swaps R and B. We apply a one-time BGR→RGB swap so the
 /// rest of the pipeline works with visually-correct pixels.
 pub fn decode_image(data: &[u8]) -> Result<Mat> {
+    tracing::info!("Decoding image: {} bytes", data.len());
+    if data.is_empty() {
+        bail!("cannot decode empty data");
+    }
     let buf: Vector<u8> = Vector::from_slice(data);
     let raw = imgcodecs::imdecode(&buf, imgcodecs::IMREAD_COLOR)
         .context("imdecode failed")?;
