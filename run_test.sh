@@ -23,7 +23,7 @@ mkdir -p output
 docker run --rm \
     -v "$(pwd)/output:/app/output" \
     watermark-tester \
-    ./tester -url "$URL"
+    ./tester --url "$URL"
 
 echo "--- Test Complete! Check the 'output/' directory. ---"
 ls -lh output/
